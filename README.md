@@ -10,6 +10,8 @@ Since 2016, [weather related power disturbances](https://www.oe.netl.doe.gov/OE4
 
 
 While the number of people affected by storm related outages has varied levels of growth over the past decade, catastrophic weather events are leaving more and more Americans without power. It isn’t surprising that unprecedented storms like Hurricane Sandy or Hurricane Harvey could leave millions of people without power. Winter weather, however, has often unreported, but disastrous effects on energy systems. With aging, and under-maintained, energy distribution systems in many parts of the U.S., [winter weather can break many mechanical parts responsible for distributing power](https://www.nationalgeographic.com/environment/article/why-does-the-power-go-out-when-its-cold). Couple this with increased heating demand during winter storms, and severe winter storms are a breeding ground for outages. Furthermore, climate change will actually [increase the intensity of snowfall](https://www.climatecommunication.org/new/features/extreme-weather/winter-storms/) in many parts of the U.S.
+
+
 ![Map of Outages](https://github.com/caksmall/Power-Outage-Analysis/blob/main/Figures/weather-related-outages (1).png)
 [Interactive Figure](https://datawrapper.dwcdn.net/lPHZU/1/)
 
