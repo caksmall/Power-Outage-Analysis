@@ -1,0 +1,563 @@
+---
+title: "Power Outage Analysis"
+author: "Chad"
+date: "11/10/2021"
+output: html_document
+---
+
+```{r library}
+library(xlsx)
+library(sos)
+library(readxl)
+library(readr)
+library(MASS)
+library(plyr)
+library(dplyr)
+library(tibble)
+library(knitr)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(plotly)
+library(sf)
+library(RANN)
+library(data.table)
+library(ggpmisc)
+library(purrr)
+library(DT)
+library(stringi)
+library(lubridate)
+library(zoo)
+library(naniar)
+library(maps)
+library(mapproj)
+library(mlr3measures)
+library(Rfast)
+library(raster)
+library(rworldxtra)
+library(rworldmap)
+library(HRW)
+library(rgdal)
+library(sp)
+library(ggtext)
+library(ggpubr)
+#install.packages("qpcR")
+library(qpcR)
+
+setwd("~/Journalism/Grist Application/R Stuff")
+```
+
+```{r import}
+Directory_name <- "C:/Users/caksm/Documents/Journalism/Grist Application/Service Outage Data/Fixed Data"
+Dir_file_names <- list.files(path=Directory_name, pattern="*.xls",
+full.names=TRUE)
+
+Outage_All <- lapply(Dir_file_names, read_excel)
+
+#create names for each data file
+list_names <- as.data.frame(2010:2021)
+list_names$fill <- "Outages"
+list_names <- list_names %>% unite("Names", c(2,1), sep = "_", remove = FALSE)
+
+#Organize files to be printed
+Y <- lapply(seq_along(Outage_All), function(x) as.data.frame(Outage_All[[x]]))
+
+lapply(seq_along(Y), function(x) { assign(list_names$Names[x], Y[[x]], envir=.GlobalEnv) 
+  }
+  )
+
+```
+
+```{r add state information}
+#just create a df of USA States and names
+USA_states <- as.data.frame(state.name)
+USA_states$abb <- state.abb
+
+#Add Washington DC
+USA_states[51,1] <- "District of Columbia"
+USA_states[51,2] <- "DC"
+
+#you need abbreviations and full names in one column
+hold <- as.data.frame(state.abb)
+hold$abb <- state.abb
+
+names(USA_states)[names(USA_states) == "state.name"] <- "Names"
+names(USA_states)[names(USA_states) == "abb"] <- "Abbr."
+
+names(hold)[names(hold) == "state.abb"] <- "Names"
+names(hold)[names(hold) == "abb"] <- "Abbr."
+
+
+
+```
+
+```{r pattern matching function}
+#courtesy of alexis_laz from Stack overflow
+#https://stackoverflow.com/questions/19747384/create-new-column-in-dataframe-based-on-partial-string-matching-other-column
+
+pat_match = function(x, patterns, replacements = patterns, fill = NA, ...)
+{
+    stopifnot(length(patterns) == length(replacements))
+
+    ans = rep_len(as.character(fill), length(x))    
+    empty = seq_along(x)
+
+    for(i in seq_along(patterns)) {
+        greps = grepl(patterns[[i]], x[empty], ...)
+        ans[empty[greps]] = replacements[[i]]  
+        empty = empty[!greps]
+    }
+
+    return(ans)
+}
+```
+
+```{r clean data sets}
+#Much of our outage data is of different variable lengths and the dates aren't yet usable
+#variables to keep: Date, NERC Region, Area Affected, Type of Disturbance/Event Type, Demand Loss (MW), Number of Customers Affected
+
+#clean 2010 data
+Outages_2010$Time <- NULL
+Outages_2010$Restoration <- NULL
+
+#clean 2011 data
+Outages_2011$`Time Event Began` <- NULL
+Outages_2011$`Date of Restoration` <- NULL
+Outages_2011$`Time of Restoration` <- NULL
+
+#clean 2012 data
+Outages_2012$`Time Event Began` <- NULL
+Outages_2012$`Date of Restoration` <- NULL
+Outages_2012$`Time of Restoration` <- NULL
+
+#clean 2013 data
+Outages_2013$`Time Event Began` <- NULL
+Outages_2013$`Date of Restoration` <- NULL
+Outages_2013$`Time of Restoration` <- NULL
+
+#clean 2014 data
+Outages_2014$`Time Event Began` <- NULL
+Outages_2014$`Date of Restoration` <- NULL
+Outages_2014$`Time of Restoration` <- NULL
+
+#2011 through 2014 have the same structure so combine them
+Outages_pt1 <- rbind(Outages_2011, Outages_2012, Outages_2013, Outages_2014)
+
+#Clean 2015 data
+Outages_2015$`Time Event Began` <- NULL
+Outages_2015$Month <- NULL
+Outages_2015$`Date of Restoration` <- NULL
+Outages_2015$`Time of Restoration` <- NULL
+Outages_2015$`Alert Criteria` <- NULL
+
+#2016 data didn't import correctly
+X2016_Annual_Summary <- read_excel("Journalism/Grist Application/Service Outage Data/Fixed Data/2016_Annual_Summary.xls", 
+    col_types = c("text", "date", "date", 
+        "text", "text", "text", "text", "text", 
+        "text", "text", "text"))
+Outages_2016 <- X2016_Annual_Summary
+rm(X2016_Annual_Summary)
+
+#Clean 2016 data
+Outages_2016$`Time Event Began` <- NULL
+Outages_2016$Month <- NULL
+Outages_2016$`Date of Restoration` <- NULL
+Outages_2016$`Time of Restoration` <- NULL
+Outages_2016$`Alert Criteria` <- NULL
+
+#Clean 2017 data
+Outages_2017$`Time Event Began` <- NULL
+Outages_2017$Month <- NULL
+Outages_2017$`Date of Restoration` <- NULL
+Outages_2017$`Time of Restoration` <- NULL
+Outages_2017$`Alert Criteria` <- NULL
+
+#Clean 2018 data
+Outages_2018$`Time Event Began` <- NULL
+Outages_2018$Month <- NULL
+Outages_2018$`Date of Restoration` <- NULL
+Outages_2018$`Time of Restoration` <- NULL
+Outages_2018$`Alert Criteria` <- NULL
+
+#Clean 2019 data
+Outages_2019$`Time Event Began` <- NULL
+Outages_2019$Month <- NULL
+Outages_2019$`Date of Restoration` <- NULL
+Outages_2019$`Time of Restoration` <- NULL
+Outages_2019$`Alert Criteria` <- NULL
+
+#Clean 2020 data
+Outages_2020$`Time Event Began` <- NULL
+Outages_2020$Month <- NULL
+Outages_2020$`Date of Restoration` <- NULL
+Outages_2020$`Time of Restoration` <- NULL
+Outages_2020$`Alert Criteria` <- NULL
+
+#Clean 2021 data
+Outages_2021$`Time Event Began` <- NULL
+Outages_2021$Month <- NULL
+Outages_2021$`Date of Restoration` <- NULL
+Outages_2021$`Time of Restoration` <- NULL
+Outages_2021$`Alert Criteria` <- NULL
+
+#the 2015 through 2021 data all have different date formats that need to be updated
+#Fix 2017, 2018, 2019, 2020, 2021
+Outages_2017$`Date Event Began` <- format(as.POSIXct(Outages_2017$`Date Event Began`,format='%m/%d/%Y'),format='%Y-%m-%d')
+
+Outages_2018$`Date Event Began` <- format(as.POSIXct(Outages_2018$`Date Event Began`,format='%m/%d/%Y'),format='%Y-%m-%d')
+
+Outages_2019$`Date Event Began` <- format(as.POSIXct(Outages_2019$`Date Event Began`,format='%m/%d/%Y'),format='%Y-%m-%d')
+
+Outages_2020$`Date Event Began` <- format(as.POSIXct(Outages_2020$`Date Event Began`,format='%m/%d/%Y'),format='%Y-%m-%d')
+
+Outages_2021$`Date Event Began` <- format(as.POSIXct(Outages_2021$`Date Event Began`,format='%m/%d/%Y'),format='%Y-%m-%d')
+
+
+#2015 through 2021 have the same struture
+Outages_pt2 <- rbind(Outages_2015, Outages_2016, Outages_2017, Outages_2018, Outages_2019, Outages_2020, Outages_2021)
+
+```
+
+```{r organize to do full merge}
+#first rename data columns
+names(Outages_pt1)[names(Outages_pt1) == "Date Event Began"] <- "Date"
+names(Outages_pt2)[names(Outages_pt2) == "Date Event Began"] <- "Date"
+
+#rename event type column
+names(Outages_2010)[names(Outages_2010) == "Type of Disturbance"] <- "Event Type"
+
+#rename demand loss
+names(Outages_2010)[names(Outages_2010) == "Loss (megawatts)"] <- "Demand Loss (MW)"
+
+#rename for number of affected customers
+names(Outages_2010)[names(Outages_2010) == "Number of Customers Affected 1"] <- "Number of Customers Affected"
+
+#reorganize the 2010 data so it can bound with the other data
+Outages_2010 <- Outages_2010[c(1,3,2,4:6)]
+
+#bind everything together
+Complete_Outages <- rbind(Outages_2010, Outages_pt1, Outages_pt2)
+
+#clear part of the environment
+rm(Outages_pt1, Outages_pt2)
+
+```
+
+```{r add final parts of necessary data}
+#pull the year for all the data
+Complete_Outages$Year <- format(Complete_Outages$Date, format="%Y")
+
+#pull the month for all data
+Complete_Outages$Month <- month(Complete_Outages$Date, abbr = FALSE, label = TRUE)
+
+#now add states to the data. Need to run it twice
+Complete_Outages$State1 <- pat_match(Complete_Outages$`Area Affected`, USA_states$Names, USA_states$`Abbr.`, NA, ignore.case = TRUE)
+
+Complete_Outages$State2 <- pat_match(Complete_Outages$`Area Affected`, hold$Names, hold$`Abbr.`, NA, ignore.case = FALSE)
+
+#coalesce data together
+Complete_Outages <- Complete_Outages %>%
+    mutate_at(vars(matches("State")), as.character) %>% 
+    mutate(State1 = coalesce(!!! dplyr::select(., matches("State"))))
+
+#clean up the data
+rm(hold)
+Complete_Outages$State2 <- NULL
+names(Complete_Outages)[names(Complete_Outages) == "State1"] <- "State"
+
+#set missing values to NA
+Complete_Outages$`Number of Customers Affected`[Complete_Outages$`Number of Customers Affected` == "Unknown"] <- NA
+Complete_Outages$`Demand Loss (MW)`[Complete_Outages$`Demand Loss (MW)` == "Unknown"] <- NA
+
+#make sure that numeric columns are numbers
+Complete_Outages$`Demand Loss (MW)` <- as.numeric(Complete_Outages$`Demand Loss (MW)`)
+
+Complete_Outages$`Number of Customers Affected` <- as.numeric(Complete_Outages$`Number of Customers Affected`)
+
+```
+
+```{r pull out weather related outages}
+Weather_Outages <- Complete_Outages %>%
+  filter(str_detect(`Event Type`, "Storm|Wind|Weather|Flood|Ice"))
+
+```
+
+```{r orgnanize weather by state}
+Weather_state <- Weather_Outages %>%
+group_by(State) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+Total_state <- Complete_Outages %>%
+group_by(State) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+
+```
+
+```{r orgnanize weather by Year}
+Weather_year <- Weather_Outages %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+Total_year <- Complete_Outages %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#add in non weather outages
+Weather_year$`Non Weather Outages` <- Total_year$Outages - Weather_year$Outages
+
+#check percentage of weather outages
+Weather_year$`Perc. Weather Outages` <- (Weather_year$Outages / Total_year$Outages)*100
+
+```
+
+```{r orgnanize weather by NERC Region}
+Weather_NERC <- Weather_Outages %>%
+group_by(`NERC Region`) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+Total_NERC <- Complete_Outages %>%
+group_by(`NERC Region`) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+
+```
+
+```{r orgnanize weather by Month}
+Weather_month <- Weather_Outages %>%
+group_by(Month) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+Total_month <- Complete_Outages %>%
+group_by(Month) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#add in non weather outages
+Weather_month$`Non Weather Outages` <- Total_month$Outages - Weather_month$Outages
+
+#check percentage of weather outages
+Weather_month$`Perc. Weather Outages` <- (Weather_month$Outages / Total_month$Outages)*100
+
+```
+
+```{r split weather outages by state}
+list_st_weather <- split(Weather_Outages, Weather_Outages$State)
+
+```
+
+```{r yearly analysis for states with the most weather outages}
+#Texas
+Texas_we_YR <- list_st_weather$TX %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#California
+Cali_we_YR <- list_st_weather$CA %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#Michigan
+Mich_we_YR <- list_st_weather$MI %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#North Carolina
+NC_we_YR <- list_st_weather$NC %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#CT
+CT_we_YR <- list_st_weather$CT %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#Alabama
+AL_we_YR <- list_st_weather$AL %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#New York
+NY_we_YR <- list_st_weather$NY %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#Arkansas
+
+Ark_we_YR <- list_st_weather$AR %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#Pennsylvania
+
+Penn_we_YR <- list_st_weather$PA %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+
+#Louisiana
+LA_we_YR <- list_st_weather$LA %>%
+group_by(Year) %>%
+summarize(
+Outages = n(),
+Total_Cust = sum(`Number of Customers Affected`, na.rm = TRUE),
+Mean_Loss = mean(`Demand Loss (MW)`, na.rm = TRUE),
+Med_Loss = median(`Demand Loss (MW)`, na.rm = TRUE),
+Mean_Cust = mean(`Number of Customers Affected`, na.rm = TRUE)
+)
+```
+
+```{r return all of the outage columns from the top ten states}
+#only keep the states that have all 12 years worth of data and then plot out the outages
+
+top10_stats <- qpcR:::cbind.na(Texas_we_YR$Outages, Cali_we_YR$Outages, Mich_we_YR$Outages, NC_we_YR$Outages, CT_we_YR$Outages, AL_we_YR$Outages, NY_we_YR$Outages, Ark_we_YR$Outages, Penn_we_YR$Outages, LA_we_YR$Outages)
+
+top10_stats <- as.data.frame(top10_stats)
+
+names(top10_stats)[names(top10_stats) == "V1"] <- "Texas"
+names(top10_stats)[names(top10_stats) == "V2"] <- "California"
+names(top10_stats)[names(top10_stats) == "V3"] <- "Michigan"
+names(top10_stats)[names(top10_stats) == "V4"] <- "North Carolina"
+names(top10_stats)[names(top10_stats) == "V5"] <- "Connecticut"
+names(top10_stats)[names(top10_stats) == "V6"] <- "Alabama"
+names(top10_stats)[names(top10_stats) == "V7"] <- "New York"
+names(top10_stats)[names(top10_stats) == "V8"] <- "Arkansas"
+names(top10_stats)[names(top10_stats) == "V9"] <- "Pennsylvania"
+names(top10_stats)[names(top10_stats) == "V10"] <- "Louisiana"
+
+top10_customers <- qpcR:::cbind.na(Texas_we_YR$Total_Cust, Cali_we_YR$Total_Cust, Mich_we_YR$Total_Cust, NC_we_YR$Total_Cust, CT_we_YR$Total_Cust, AL_we_YR$Total_Cust, NY_we_YR$Total_Cust, Ark_we_YR$Total_Cust, Penn_we_YR$Total_Cust, LA_we_YR$Total_Cust)
+
+top10_customers <- as.data.frame(top10_customers)
+
+names(top10_customers)[names(top10_customers) == "V1"] <- "Texas"
+names(top10_customers)[names(top10_customers) == "V2"] <- "California"
+names(top10_customers)[names(top10_customers) == "V3"] <- "Michigan"
+names(top10_customers)[names(top10_customers) == "V4"] <- "North Carolina"
+names(top10_customers)[names(top10_customers) == "V5"] <- "Connecticut"
+names(top10_customers)[names(top10_customers) == "V6"] <- "Alabama"
+names(top10_customers)[names(top10_customers) == "V7"] <- "New York"
+names(top10_customers)[names(top10_customers) == "V8"] <- "Arkansas"
+names(top10_customers)[names(top10_customers) == "V9"] <- "Pennsylvania"
+names(top10_customers)[names(top10_customers) == "V10"] <- "Louisiana"
+
+```
+
+```{r save}
+write.csv(x = Weather_state, file = "C:/Users/caksm/Documents/Journalism/Grist Application/R Stuff/Raw Data Frames/Weather Outages By State.csv", row.names = FALSE)
+
+write.csv(x = Total_state, file = "C:/Users/caksm/Documents/Journalism/Grist Application/R Stuff/Raw Data Frames/Total Outages By State.csv", row.names = FALSE)
+
+write.csv(x = Weather_year, file = "C:/Users/caksm/Documents/Journalism/Grist Application/R Stuff/Raw Data Frames/Weather Outages By Year.csv", row.names = FALSE)
+
+write.csv(x = Weather_month, file = "C:/Users/caksm/Documents/Journalism/Grist Application/R Stuff/Raw Data Frames/Weather Outages By Month.csv", row.names = FALSE)
+
+write.csv(x = Weather_NERC, file = "C:/Users/caksm/Documents/Journalism/Grist Application/R Stuff/Raw Data Frames/Weather Outages By NERC Region.csv", row.names = FALSE)
+
+write.csv(x = Total_NERC, file = "C:/Users/caksm/Documents/Journalism/Grist Application/R Stuff/Raw Data Frames/Total Outages By NERC Region.csv", row.names = FALSE)
+
+write.csv(x = top10_stats, file = "C:/Users/caksm/Documents/Journalism/Grist Application/R Stuff/Raw Data Frames/Top 10 State Weather Outages N.csv", row.names = TRUE)
+
+write.csv(x = top10_customers, file = "C:/Users/caksm/Documents/Journalism/Grist Application/R Stuff/Raw Data Frames/Top 10 State Weather Outages Customers.csv", row.names = TRUE)
+
+```
+
